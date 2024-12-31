@@ -53,3 +53,40 @@ if ingredients_list:
     if time_to_insert:
         session.sql(my_insert_stmt).collect()
         st.success(f'✅ Your Smoothie is ordered, {name_on_order}!')
+
+# Section for pending orders
+st.title(":cup_with_straw: Pending Smoothie Orders! :cup_with_straw:")
+st.write("**Orders that need to be filled.**")
+
+# Fetch pending orders (ORDER_FILLED == 0)
+my_orders_dataframe = session.table("smoothies.public.orders").filter(col("ORDER_FILLED") == 0).collect()
+
+# If there are pending orders, allow the user to edit them
+if my_orders_dataframe:
+    # Editable table for pending orders
+    editable_df = st.data_editor(my_orders_dataframe)
+
+    # Submit button to save changes after editing the orders
+    submitted = st.button("Submit")
+    if submitted:
+        try:
+            # Create original dataset and the edited dataset as Snowflake DataFrames
+            og_dataset = session.table("smoothies.public.orders")
+            edited_dataset = session.create_dataframe(editable_df)
+
+            # Merge the edited data back into the original dataset
+            og_dataset.merge(
+                edited_dataset,
+                (og_dataset["ORDER_UID"] == edited_dataset["ORDER_UID"]),
+                [
+                    when_matched().update({"ORDER_FILLED": edited_dataset["ORDER_FILLED"]}),
+                ],
+            )
+
+            st.success("Orders updated successfully!", icon="👍")
+
+        except Exception as e:
+            st.error(f"Error occurred: {e}")
+
+else:
+    st.success("There are no pending orders right now", icon="👍")
